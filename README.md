@@ -296,7 +296,39 @@ npm test            # 排盘引擎回归（768 盘 × 紫微铁律、夏令时�
 
 每次 push 与 PR 都会在 GitHub Actions 上跑同一套（见 [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)）。
 
-> **注意：开源版不含后端 API 路由。**排盘、命盘展示、合盘起盘都在浏览器里用本仓库的引擎完成，**不需要任何 API Key**。AI 解读（`/api/interpret`）和合盘 AI 分析（`/api/heming`）需要你自己实现接口；没实现之前，这两处会直接提示「开源版不含该接口」，配置 API Key 也不会变成可用（#30 就是这个原因）。
+> **排盘不需要任何 API Key。**排盘、命盘展示、合盘起盘都在浏览器里用本仓库的引擎完成。纯排盘接口已内置（见下方「排盘 API」）；AI 解读接口 `/api/interpret` 也已内置，配置 `DEEPSEEK_API_KEY` 后即可在命盘页使用。合盘 AI 分析（`/api/heming`）仍需你自己实现。
+
+### 排盘 API
+
+仓库内置两个纯排盘接口，不调用 AI、不需要 API Key。
+
+**`POST /api/generate`** — 服务端排盘，返回 `{ "chart": ZiweiChart }`。
+
+出生时间两种写法二选一：
+
+```bash
+# 1) 已换算好的时辰支（0=子 … 11=亥）
+curl -X POST http://localhost:3000/api/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"year":2002,"month":4,"day":30,"hour":8,"gender":"male","longitude":120.4}'
+
+# 2) 钟表时间，由后端按经度校正，并按晚子时规则换日
+curl -X POST http://localhost:3000/api/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"year":2002,"month":4,"day":30,"clockHour":15,"clockMinute":25,"longitude":120.4,"gender":"male"}'
+```
+
+可选字段：`name`、`province`、`city`、`leapMonth`（默认 `split`，另有 `next-month` / `prev-month` / `origin-month`）。参数错误返回 400，`error.fields` 会逐项指出问题。
+
+**`POST /api/lunar-to-solar`** — 农历转公历：`{"year":2002,"month":3,"day":18}` → `{"solar":{"year":2002,"month":4,"day":30}}`。不存在的农历日期（含不存在的闰月）返回 400，不会静默顺延。
+
+**`POST /api/interpret`** — AI 命盘解读，SSE 流式返回。入参与命盘页一致：
+
+```json
+{ "chart": { "...": "ZiweiChart" }, "messages": [{ "role": "user", "content": "请解读我的事业和财运" }] }
+```
+
+服务端只取 `chart.birthInfo` 重新排盘，不信任客户端传来的星曜文本；随后按 `.env.local` 里的 `AI_PROVIDER` / `DEEPSEEK_*`（或 `MIMO_*`）调用 OpenAI 兼容接口。响应每行 `data: {"delta":{"text":"..."}}`，以 `data: [DONE]` 结束。未配置 Key 时返回 503。
 
 ---
 
@@ -385,9 +417,9 @@ npm test            # 排盘引擎回归（768 盘 × 紫微铁律、夏令时�
 | | 内容 |
 |---|---|
 | ✅ **开源** | 排盘引擎（`lib/ziwei/`）、古籍公版原文（`lib/classics/`）、SEO 知识图谱（`lib/seo/`）、Demo 界面、51.8 万样本数据集、13 维解读数据集 v4.0 |
-| ❌ **不开源** | 断语库（`lib/ziwei/db-analysis.ts` 是占位，线上是上万行的 13 主题断语）、AI 解读 prompt、后端 API（`/api/interpret` 等）、用户系统（登录 / 会员 / 支付）、服务端安全（签名、防刷、水印）、部署配置 |
+| ❌ **不开源** | 断语库（`lib/ziwei/db-analysis.ts` 是占位，线上是上万行的 13 主题断语）、线上商业版调优过的 AI 解读 prompt、合盘 AI 接口（`/api/heming`）、用户系统（登录 / 会员 / 支付）、服务端安全（签名、防刷、水印）、部署配置 |
 
-如果你需要 AI 解读能力，可以参考 `lib/ziwei/patterns.ts` 和 `heming-knowledge.ts` 里的知识库，结合任意 LLM 自行构建 prompt。
+`/api/interpret` 的 prompt 在 `app/api/interpret/route.ts` 里，可以直接按自己的体系改；也可以参考 `lib/ziwei/patterns.ts` 和 `heming-knowledge.ts` 扩充上下文。
 
 ---
 

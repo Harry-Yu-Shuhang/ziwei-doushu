@@ -1,6 +1,6 @@
 import type { BirthFormState } from '@/components/BirthForm';
 import type { BirthInfo } from './types';
-import { branchFromSolarMinutes, resolveZiweiDayOffset, shiftGregorianDate } from './true-solar-time';
+import { solarClockToChartDate } from './birth-input';
 
 /** 根据北京时间 + 经度计算真太阳时时辰支 (0-11) */
 export function calcTrueSolarBranch(clockHour: number, clockMinute: number, longitude: number): number {
@@ -24,15 +24,18 @@ export function formToBirthInfo(form: BirthFormState): BirthInfo {
   let d = parseInt(form.day) || 0;
   let hour = 0;
 
-  // 晚子时换日按真太阳时判定，与时辰支同一口径（见 true-solar-time.ts 的 resolveZiweiDayOffset）。
+  // 晚子时换日按真太阳时判定，与时辰支同一口径（见 lib/ziwei/birth-input.ts）。
   // 只看钟表 23 点会和经度校正后的时辰错位：东经 100° 钟表 23:30 是真太阳时 22:10 亥时，不该换日。
   if (!form.unknownTime) {
-    const solar = (parseInt(form.clockHour) || 0) * 60 + (parseInt(form.clockMinute) || 0) + (form.longitude - 120) * 4;
-    const normalizedMinutes = ((solar % 1440) + 1440) % 1440;
-    hour = branchFromSolarMinutes(normalizedMinutes);
-    const dayOffset = resolveZiweiDayOffset({ dayOffset: Math.floor(solar / 1440), normalizedMinutes, branch: hour });
-    if (dayOffset !== 0 && y > 0 && m > 0 && d > 0) {
-      ({ year: y, month: m, day: d } = shiftGregorianDate({ year: y, month: m, day: d }, dayOffset));
+    const chartDate = solarClockToChartDate({
+      year: y, month: m, day: d,
+      clockHour: parseInt(form.clockHour) || 0,
+      clockMinute: parseInt(form.clockMinute) || 0,
+      longitude: form.longitude,
+    });
+    hour = chartDate.hour;
+    if (y > 0 && m > 0 && d > 0) {
+      ({ year: y, month: m, day: d } = chartDate);
     }
   }
 
